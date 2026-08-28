@@ -387,6 +387,7 @@ export const CLI_HELP_SECTIONS = Object.freeze([
     title: 'Capture',
     lines: [
       'bbx screenshot [--tab <tabId>] [--format png|jpeg|webp] [--quality 0-100] <ref|selector> [path]',
+      'bbx capture-scroll [--tab <tabId>] [--format png|jpeg|webp] [--quality 0-100] [path]  Scroll and stitch viewport screenshots into a full-page capture (PNG stitching built-in)',
       'bbx har [--tab <tabId>] [--limit 1-200] [--url-pattern <pattern>] [--delivery inline|artifact|auto] [outPath]',
     ],
   },
