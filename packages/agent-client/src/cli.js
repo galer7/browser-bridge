@@ -47,6 +47,7 @@ import { getAutoUpdatePolicy, parseAutoUpdatePolicy, setAutoUpdatePolicy } from 
 import { formatMcpConfig, isMcpClientName, MCP_CLIENT_NAMES } from './mcp-config.js';
 import { getDoctorReport, requestBridge, resolveRef } from './runtime.js';
 import { createBridgeClientForDestination } from './remotes.js';
+import { matchRecipe } from './recipe-match.js';
 import { atomicWriteFile } from './atomic-write.js';
 
 /** @typedef {import('./types.js').BridgeMethod} BridgeMethod */
@@ -340,28 +341,12 @@ async function main() {
           process.exitCode = 1;
           return;
         }
-        try {
-          const hostname = new URL(origin).hostname;
-          const candidates = [hostname, hostname.replace(/^www\./, '')];
-          for (const c of candidates) {
-            const recipePath = path.join(recipesDir, c, 'RECIPE.md');
-            if (fs.default.existsSync(recipePath)) {
-              process.stdout.write(fs.default.readFileSync(recipePath, 'utf-8'));
-              return;
-            }
-          }
-          // try parent domain
-          const parts = hostname.split('.');
-          if (parts.length > 2) {
-            const parent = parts.slice(-2).join('.');
-            const recipePath = path.join(recipesDir, parent, 'RECIPE.md');
-            if (fs.default.existsSync(recipePath)) {
-              process.stdout.write(fs.default.readFileSync(recipePath, 'utf-8'));
-              return;
-            }
-          }
-        } catch { /* invalid URL */ }
-        process.stdout.write('No matching recipe.\n');
+        const match = matchRecipe(origin);
+        if (match) {
+          process.stdout.write(fs.default.readFileSync(match.path, 'utf-8'));
+        } else {
+          process.stdout.write('No matching recipe.\n');
+        }
         return;
       }
 

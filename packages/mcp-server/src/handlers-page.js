@@ -33,6 +33,7 @@ import {
   withToolClient,
   REQUEST_SOURCE,
 } from './handlers-utils.js';
+import { matchRecipe } from '../../agent-client/src/recipe-match.js';
 import { createScreenshotResult } from './handlers-capture.js';
 
 /** @typedef {import('../../protocol/src/types.js').BridgeMethod} BridgeMethod */
@@ -157,6 +158,31 @@ export async function handlePageTool(args) {
           tokenBudget: getToolTokenBudget(normalizedArgs),
         });
         return createHarExportResult(response);
+      },
+      { destinationId: normalizedArgs.destinationId ?? null }
+    );
+  }
+  if (normalizedArgs.action === 'state') {
+    return withToolClient(
+      async (client) => {
+        const response = await requestBridgeWithRetry(client, entry.method, params, {
+          tabId: typeof normalizedArgs.tabId === 'number' ? normalizedArgs.tabId : null,
+          source: REQUEST_SOURCE,
+          tokenBudget: getToolTokenBudget(normalizedArgs),
+          targetProfile: normalizedArgs.targetProfile ?? null,
+        });
+        const result = summarizeToolResponse(response, entry.method, params);
+        if (response.ok && result.structuredContent) {
+          const origin =
+            typeof response.result?.origin === 'string' ? response.result.origin : null;
+          if (origin) {
+            const recipe = matchRecipe(origin);
+            if (recipe) {
+              result.structuredContent.recipe = { domain: recipe.domain, available: true };
+            }
+          }
+        }
+        return result;
       },
       { destinationId: normalizedArgs.destinationId ?? null }
     );
@@ -539,7 +565,18 @@ export async function handleRawCallTool(args) {
       if (method === 'sensitive.read') {
         return createSensitiveReadResult(response);
       }
-      return summarizeToolResponse(response, method, params);
+      const result = summarizeToolResponse(response, method, params);
+      if (method === 'page.get_state' && response.ok && result.structuredContent) {
+        const origin =
+          typeof response.result?.origin === 'string' ? response.result.origin : null;
+        if (origin) {
+          const recipe = matchRecipe(origin);
+          if (recipe) {
+            result.structuredContent.recipe = { domain: recipe.domain, available: true };
+          }
+        }
+      }
+      return result;
     },
     { destinationId: args.destinationId ?? null }
   );
@@ -765,6 +802,18 @@ export async function handleInvestigateTool(args) {
       const allOk = failedSteps.length === 0;
       const totalDuration = stepResults.reduce((sum, s) => sum + s.durationMs, 0);
 
+      /** @type {{ domain: string, available: true } | undefined} */
+      let recipe;
+      const stateStep = stepResults.find((s) => s.method === 'page.get_state' && s.ok);
+      if (stateStep) {
+        const evidence = /** @type {Record<string, unknown> | null} */ (stateStep.evidence);
+        const origin = typeof evidence?.origin === 'string' ? evidence.origin : null;
+        if (origin) {
+          const match = matchRecipe(origin);
+          if (match) recipe = { domain: match.domain, available: true };
+        }
+      }
+
       const summaryText = allOk
         ? `Investigation complete (${scope.label}, ${stepResults.length} steps, ${totalDuration}ms). Objective: ${objective}`
         : `Investigation partial (${scope.label}, ${stepResults.length} steps, ${failedSteps.length} failed, ${totalDuration}ms). Objective: ${objective}`;
@@ -778,6 +827,7 @@ export async function handleInvestigateTool(args) {
           heuristicFallback: true,
           steps: stepResults,
           failedSteps,
+          ...(recipe ? { recipe } : {}),
         },
         !allOk
       );
