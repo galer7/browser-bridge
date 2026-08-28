@@ -702,6 +702,39 @@ async function main() {
       return;
     }
 
+    if (command === 'capture-scroll') {
+      const parsed = extractTabFlag(rest);
+      const screenshotOptions = extractScreenshotFlags(parsed.rest);
+      const [outputPath] = screenshotOptions.rest;
+      const { captureScrollingPage } = await import('./capture-scroll.js');
+      const result = await captureScrollingPage(client, {
+        tabId: parsed.tabId,
+        format: screenshotOptions.format,
+        quality: screenshotOptions.quality,
+        source: REQUEST_SOURCE,
+        targetProfile,
+      });
+      const extension = screenshotOptions.format === 'jpeg' ? 'jpg' : screenshotOptions.format;
+      let filePath =
+        outputPath || path.join(os.tmpdir(), `bbx-capture-scroll-${Date.now()}.${extension}`);
+      if (outputPath && !path.extname(outputPath)) filePath = `${outputPath}.${extension}`;
+      await atomicWriteFile(filePath, result.image);
+      printJson({
+        ok: true,
+        summary: `Scrolling capture saved to ${filePath} (${result.frameCount} frames, ${result.totalHeight}px tall).`,
+        evidence: {
+          savedTo: filePath,
+          frameCount: result.frameCount,
+          totalHeight: result.totalHeight,
+          viewportHeight: result.viewportHeight,
+          scrollContainer: result.scrollContainer,
+          format: result.format,
+          stitched: result.format === 'png' && result.frameCount > 1,
+        },
+      });
+      return;
+    }
+
     if (command === 'har') {
       const parsed = extractTabFlag(rest);
       const harOptions = extractHarFlags(parsed.rest);
